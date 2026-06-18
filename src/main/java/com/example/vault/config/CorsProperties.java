@@ -25,11 +25,19 @@ public class CorsProperties {
 
     @PostConstruct
     void applyEnvOverride() {
-        if (corsOriginsEnv != null && !corsOriginsEnv.isBlank()) {
-            allowedOrigins = Arrays.stream(corsOriginsEnv.split(","))
-                    .map(String::trim)
-                    .filter(s -> !s.isEmpty())
-                    .toList();
+        if (corsOriginsEnv == null || corsOriginsEnv.isBlank()) {
+            return;
         }
+
+        var merged = new ArrayList<>(allowedOrigins);
+        Arrays.stream(corsOriginsEnv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .forEach(origin -> {
+                    if (!merged.contains(origin)) {
+                        merged.add(origin);
+                    }
+                });
+        allowedOrigins = merged;
     }
 }
