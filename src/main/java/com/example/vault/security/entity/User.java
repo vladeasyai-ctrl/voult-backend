@@ -3,6 +3,8 @@ package com.example.vault.security.entity;
 import com.example.vault.common.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -31,8 +33,15 @@ public class User extends AuditableEntity {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private String password;
+
+    @Column(name = "google_sub")
+    private String googleSub;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider", nullable = false)
+    private AuthProvider authProvider;
 
     @Column(nullable = false)
     private boolean enabled;

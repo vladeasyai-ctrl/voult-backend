@@ -1,6 +1,7 @@
 package com.example.vault.security;
 
 import com.example.vault.security.dto.AuthResponse;
+import com.example.vault.security.dto.GoogleLoginRequest;
 import com.example.vault.security.dto.LoginRequest;
 import com.example.vault.security.dto.RegisterRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,5 +34,11 @@ public class AuthController {
     @Operation(summary = "Login and obtain JWT token")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/google")
+    @Operation(summary = "Login with Google ID token and obtain JWT token")
+    public AuthResponse googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+        return authService.loginWithGoogle(request);
     }
 }

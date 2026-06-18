@@ -1,6 +1,7 @@
 package com.example.vault.config;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -9,6 +10,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
+@Slf4j
 @Configuration
 @RequiredArgsConstructor
 public class CorsConfig {
@@ -17,8 +19,11 @@ public class CorsConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+        List<String> origins = corsProperties.getAllowedOrigins();
+        log.info("CORS allowed origin patterns: {}", origins);
+
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(corsProperties.getAllowedOrigins());
+        config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setExposedHeaders(List.of("Authorization"));

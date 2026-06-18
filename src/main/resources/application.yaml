@@ -29,9 +29,12 @@ vault:
     allowed-origins:
       - http://localhost:3000
       - http://localhost:5173
+      - https://*.vercel.app
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-secure-256-bit-secret-key-for-production-use}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
   storage:
     endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
     access-key: ${STORAGE_ACCESS_KEY:minioadmin}
