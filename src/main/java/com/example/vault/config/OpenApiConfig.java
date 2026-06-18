@@ -19,7 +19,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Personal Document Vault API")
-                        .description("REST API for personal document storage with versioning and tree structure")
+                        .description("REST API for personal document storage with AI-assisted import")
                         .version("1.0.0")
                         .contact(new Contact()
                                 .name("Document Vault Team")

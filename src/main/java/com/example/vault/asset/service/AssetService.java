@@ -5,7 +5,10 @@ import com.example.vault.asset.dto.DownloadUrlResponse;
 import com.example.vault.asset.entity.Asset;
 import com.example.vault.asset.mapper.AssetMapper;
 import com.example.vault.asset.repository.AssetRepository;
-import com.example.vault.config.MinioProperties;
+import com.example.vault.config.StorageProperties;
+import com.example.vault.asset.entity.Asset;
+import com.example.vault.asset.repository.AssetRepository;
+import com.example.vault.document.repository.DocumentRepository;
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
 import com.example.vault.storage.StorageService;
@@ -28,7 +31,8 @@ public class AssetService {
     private final AssetRepository assetRepository;
     private final AssetMapper assetMapper;
     private final StorageService storageService;
-    private final MinioProperties minioProperties;
+    private final StorageProperties storageProperties;
+    private final DocumentRepository documentRepository;
 
     @Transactional
     public AssetDto upload(MultipartFile file) {
@@ -67,7 +71,20 @@ public class AssetService {
                 .orElseThrow(() -> new ResourceNotFoundException("Asset", id));
 
         String url = storageService.generatePresignedDownloadUrl(asset.getStorageKey());
-        return new DownloadUrlResponse(url, minioProperties.getPresignedUrlExpirySeconds());
+        return new DownloadUrlResponse(url, storageProperties.getPresignedUrlExpirySeconds());
+    }
+
+    @Transactional
+    public void deleteIfOrphan(UUID assetId) {
+        if (documentRepository.existsByAssetId(assetId)) {
+            return;
+        }
+        Asset asset = assetRepository.findById(assetId).orElse(null);
+        if (asset == null) {
+            return;
+        }
+        storageService.deleteObject(asset.getStorageKey());
+        assetRepository.delete(asset);
     }
 
     private String buildStorageKey(UUID assetId, String originalFilename) {

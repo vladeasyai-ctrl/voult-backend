@@ -8,7 +8,7 @@ import java.util.UUID;
  */
 public interface OcrProcessor {
 
-    void processDocumentVersion(UUID versionId, UUID assetId);
+    void processDocument(UUID documentId, UUID assetId);
 
     boolean isEnabled();
 }

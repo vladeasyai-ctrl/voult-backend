@@ -1,7 +1,6 @@
 package com.example.vault.module;
 
 import com.example.vault.common.event.DocumentCreatedEvent;
-import com.example.vault.common.event.DocumentVersionCreatedEvent;
 import com.example.vault.module.classification.DocumentClassifier;
 import com.example.vault.module.ocr.OcrProcessor;
 import com.example.vault.module.search.FullTextSearchIndexer;
@@ -41,33 +40,18 @@ public class ModuleEventOrchestrator {
     @Async
     @EventListener
     public void onDocumentCreated(DocumentCreatedEvent event) {
-        indexers.stream().filter(FullTextSearchIndexer::isEnabled).forEach(indexer ->
-                indexer.indexDocument(event.documentId(), event.title(), null));
-
-        classifiers.stream().filter(DocumentClassifier::isEnabled).forEach(classifier ->
-                classifier.classifyDocument(event.documentId(), null));
-
-        notifiers.stream().filter(TelegramNotifier::isEnabled).forEach(notifier ->
-                notifier.onDocumentCreated(event));
-
-        log.debug("Processed DocumentCreatedEvent for document {}", event.documentId());
-    }
-
-    @Async
-    @EventListener
-    public void onDocumentVersionCreated(DocumentVersionCreatedEvent event) {
         ocrProcessors.stream().filter(OcrProcessor::isEnabled).forEach(processor ->
-                processor.processDocumentVersion(event.versionId(), event.assetId()));
+                processor.processDocument(event.documentId(), event.assetId()));
 
         classifiers.stream().filter(DocumentClassifier::isEnabled).forEach(classifier ->
                 classifier.classifyDocument(event.documentId(), event.assetId()));
 
         indexers.stream().filter(FullTextSearchIndexer::isEnabled).forEach(indexer ->
-                indexer.indexDocumentVersion(event.versionId(), event.documentId(), event.assetId()));
+                indexer.indexDocument(event.documentId(), event.title(), null));
 
         notifiers.stream().filter(TelegramNotifier::isEnabled).forEach(notifier ->
-                notifier.onDocumentVersionCreated(event));
+                notifier.onDocumentCreated(event));
 
-        log.debug("Processed DocumentVersionCreatedEvent for version {}", event.versionId());
+        log.debug("Processed DocumentCreatedEvent for document {}", event.documentId());
     }
 }

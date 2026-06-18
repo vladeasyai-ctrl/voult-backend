@@ -12,5 +12,9 @@ public interface StorageService {
 
     String generatePresignedDownloadUrl(String objectKey);
 
+    void deleteObject(String objectKey);
+
+    byte[] download(String objectKey);
+
     void ensureBucketExists();
 }

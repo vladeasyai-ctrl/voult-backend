@@ -6,8 +6,10 @@ import java.util.UUID;
 public record DocumentDto(
         UUID id,
         UUID nodeId,
+        UUID assetId,
         String title,
         String description,
+        String aiSummary,
         Instant createdAt,
         Instant updatedAt
 ) {

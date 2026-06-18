@@ -3,9 +3,6 @@ package com.example.vault.document.controller;
 import com.example.vault.document.dto.CreateDocumentRequest;
 import com.example.vault.document.dto.DocumentDto;
 import com.example.vault.document.service.DocumentService;
-import com.example.vault.version.dto.CreateVersionRequest;
-import com.example.vault.version.dto.DocumentVersionDto;
-import com.example.vault.version.service.DocumentVersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -27,11 +24,10 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/documents")
 @RequiredArgsConstructor
-@Tag(name = "Documents", description = "Document management and versioning")
+@Tag(name = "Documents", description = "Document management")
 public class DocumentController {
 
     private final DocumentService documentService;
-    private final DocumentVersionService versionService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -41,7 +37,7 @@ public class DocumentController {
     }
 
     @GetMapping("/search")
-    @Operation(summary = "Search documents by title")
+    @Operation(summary = "Search documents by title, summary and full text index")
     public List<DocumentDto> search(@RequestParam(required = false) String q) {
         return documentService.search(q);
     }
@@ -63,21 +59,5 @@ public class DocumentController {
     @Operation(summary = "Delete document")
     public void delete(@PathVariable UUID id) {
         documentService.delete(id);
-    }
-
-    @PostMapping("/{id}/versions")
-    @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Create a new document version")
-    public DocumentVersionDto createVersion(
-            @PathVariable UUID id,
-            @Valid @RequestBody CreateVersionRequest request
-    ) {
-        return versionService.createVersion(id, request);
-    }
-
-    @GetMapping("/{id}/versions")
-    @Operation(summary = "List document versions")
-    public List<DocumentVersionDto> getVersions(@PathVariable UUID id) {
-        return versionService.getVersions(id);
     }
 }

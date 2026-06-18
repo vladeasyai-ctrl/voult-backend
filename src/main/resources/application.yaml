@@ -32,12 +32,22 @@ vault:
   jwt:
     secret: ${JWT_SECRET:change-me-to-a-secure-256-bit-secret-key-for-production-use}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-  minio:
-    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
-    access-key: ${MINIO_ACCESS_KEY:minioadmin}
-    secret-key: ${MINIO_SECRET_KEY:minioadmin}
-    bucket: ${MINIO_BUCKET:vault-assets}
-    presigned-url-expiry-seconds: ${MINIO_PRESIGNED_EXPIRY:3600}
+  storage:
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+    access-key: ${STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${STORAGE_SECRET_KEY:minioadmin}
+    bucket: ${STORAGE_BUCKET:vault-assets}
+    region: ${STORAGE_REGION:}
+    presigned-url-expiry-seconds: ${STORAGE_PRESIGNED_EXPIRY:3600}
+    auto-create-bucket: ${STORAGE_AUTO_CREATE_BUCKET:true}
+  ai:
+    enabled: ${AI_ENABLED:true}
+    default-provider: ${AI_PROVIDER:openai}
+    fallback-api-key: ${OPENAI_TOKEN:}
+    openai:
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      timeout-seconds: ${OPENAI_TIMEOUT_SECONDS:60}
 
 springdoc:
   api-docs:

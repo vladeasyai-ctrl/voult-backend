@@ -33,4 +33,7 @@ public class Document extends AuditableEntity {
 
     @Column
     private String description;
+
+    @Column(name = "asset_id", nullable = false, unique = true)
+    private UUID assetId;
 }

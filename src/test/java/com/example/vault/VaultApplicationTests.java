@@ -31,10 +31,10 @@ class VaultApplicationTests {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("vault.minio.endpoint", () -> "http://localhost:9000");
-        registry.add("vault.minio.access-key", () -> "minioadmin");
-        registry.add("vault.minio.secret-key", () -> "minioadmin");
-        registry.add("vault.minio.bucket", () -> "vault-assets-test");
+        registry.add("vault.storage.endpoint", () -> "http://localhost:9000");
+        registry.add("vault.storage.access-key", () -> "minioadmin");
+        registry.add("vault.storage.secret-key", () -> "minioadmin");
+        registry.add("vault.storage.bucket", () -> "vault-assets-test");
     }
 
     @BeforeEach

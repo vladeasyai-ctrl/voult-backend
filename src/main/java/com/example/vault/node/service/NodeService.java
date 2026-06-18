@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -146,5 +147,135 @@ public class NodeService {
 
         NodeDto dto = nodeMapper.toDto(node);
         return TreeNodeDto.leaf(dto).withChildren(new ArrayList<>(children));
+    }
+
+    @Transactional
+    public UUID resolveOrCreateFolderPath(UUID parentId, List<String> segments, boolean createMissing) {
+        validateParent(parentId);
+        UUID currentParent = parentId;
+
+        if (segments == null || segments.isEmpty()) {
+            return currentParent;
+        }
+
+        for (String rawSegment : segments) {
+            if (rawSegment == null || rawSegment.isBlank()) {
+                continue;
+            }
+            String segment = rawSegment.trim();
+            UUID parent = currentParent;
+            Optional<Node> existing = nodeRepository.findFolderByParentAndName(
+                    parent, segment, NodeType.FOLDER
+            );
+            if (existing.isPresent()) {
+                currentParent = existing.get().getId();
+                continue;
+            }
+            if (!createMissing) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "FOLDER_NOT_FOUND",
+                        "Folder not found: " + segment);
+            }
+            Node folder = Node.builder()
+                    .id(UUID.randomUUID())
+                    .parentId(currentParent)
+                    .name(segment)
+                    .type(NodeType.FOLDER)
+                    .build();
+            currentParent = nodeRepository.save(folder).getId();
+        }
+        return currentParent;
+    }
+
+    /**
+     * Resolves the target folder for AI import confirm.
+     * When {@code anchorParentId} is set (file dropped on a folder), {@code folderPath} from AI
+     * is treated as an absolute path from vault roots and stripped to a relative suffix.
+     */
+    @Transactional
+    public UUID resolveImportParent(UUID anchorParentId, List<String> folderPath, boolean createMissing) {
+        List<String> segments = normalizePathSegments(folderPath);
+        if (anchorParentId == null) {
+            return resolveOrCreateFolderPath(null, segments, createMissing);
+        }
+        if (segments.isEmpty()) {
+            return anchorParentId;
+        }
+
+        List<String> anchorPath = getPathFromRoot(anchorParentId);
+        List<String> relative = stripLeadingPrefixIgnoreCase(anchorPath, segments);
+        if (relative != null) {
+            return resolveOrCreateFolderPath(anchorParentId, relative, createMissing);
+        }
+
+        Node anchor = findNodeOrThrow(anchorParentId);
+        if (segments.size() == 1 && segments.getFirst().equalsIgnoreCase(anchor.getName())) {
+            return anchorParentId;
+        }
+        if (anchorPath.size() >= segments.size()) {
+            List<String> anchorSuffix = anchorPath.subList(
+                    anchorPath.size() - segments.size(), anchorPath.size());
+            if (segmentsEqualIgnoreCase(anchorSuffix, segments)) {
+                return anchorParentId;
+            }
+        }
+
+        Optional<Node> rootMatch = nodeRepository.findFolderByParentAndName(
+                null, segments.getFirst(), NodeType.FOLDER);
+        if (rootMatch.isPresent()) {
+            return resolveOrCreateFolderPath(null, segments, createMissing);
+        }
+
+        return resolveOrCreateFolderPath(anchorParentId, segments, createMissing);
+    }
+
+    private List<String> getPathFromRoot(UUID nodeId) {
+        List<String> path = new ArrayList<>();
+        UUID current = nodeId;
+        while (current != null) {
+            Node node = findNodeOrThrow(current);
+            path.addFirst(node.getName());
+            current = node.getParentId();
+        }
+        return path;
+    }
+
+    private List<String> normalizePathSegments(List<String> segments) {
+        if (segments == null || segments.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String raw : segments) {
+            if (raw != null && !raw.isBlank()) {
+                normalized.add(raw.trim());
+            }
+        }
+        return normalized;
+    }
+
+    private List<String> stripLeadingPrefixIgnoreCase(List<String> prefix, List<String> full) {
+        if (prefix.isEmpty()) {
+            return full;
+        }
+        if (full.size() < prefix.size()) {
+            return null;
+        }
+        for (int i = 0; i < prefix.size(); i++) {
+            if (!prefix.get(i).equalsIgnoreCase(full.get(i))) {
+                return null;
+            }
+        }
+        return new ArrayList<>(full.subList(prefix.size(), full.size()));
+    }
+
+    private boolean segmentsEqualIgnoreCase(List<String> left, List<String> right) {
+        if (left.size() != right.size()) {
+            return false;
+        }
+        for (int i = 0; i < left.size(); i++) {
+            if (!left.get(i).equalsIgnoreCase(right.get(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 }
