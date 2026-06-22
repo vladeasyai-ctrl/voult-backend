@@ -27,6 +27,9 @@ public class Node extends AuditableEntity {
     @Id
     private UUID id;
 
+    @Column(name = "space_id", nullable = false)
+    private UUID spaceId;
+
     @Column(name = "parent_id")
     private UUID parentId;
 

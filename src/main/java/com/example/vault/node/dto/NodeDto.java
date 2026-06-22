@@ -8,6 +8,7 @@ import java.util.UUID;
 
 public record NodeDto(
         UUID id,
+        UUID spaceId,
         UUID parentId,
         String name,
         NodeType type,

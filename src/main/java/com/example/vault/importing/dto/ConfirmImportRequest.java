@@ -11,6 +11,7 @@ public record ConfirmImportRequest(
         @Size(max = 5000) String summary,
         List<@NotBlank @Size(max = 100) String> tags,
         List<@NotBlank @Size(max = 255) String> folderPath,
+        UUID spaceId,
         UUID parentId
 ) {
 }

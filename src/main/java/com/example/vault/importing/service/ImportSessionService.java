@@ -103,6 +103,7 @@ public class ImportSessionService {
         }
 
         UUID parentId = nodeService.resolveImportParent(
+                request.spaceId(),
                 request.parentId(),
                 request.folderPath() != null ? request.folderPath() : session.getProposal().folderPath(),
                 session.getProposal().createMissingFolders()

@@ -65,8 +65,10 @@ public class VaultActionExecutor {
     }
 
     private String createFolder(AiPlanDto.AiPlanActionDto action) {
+        UUID spaceId = nodeResolver.resolveSpaceId(null, action.parentNodeId(), action.folderPath());
         if (action.folderPath() != null && !action.folderPath().isEmpty()) {
             UUID folderId = nodeService.resolveOrCreateFolderPath(
+                    spaceId,
                     action.parentNodeId(),
                     action.folderPath(),
                     true
@@ -82,10 +84,12 @@ public class VaultActionExecutor {
         UUID parentId = action.parentNodeId();
         if (parentId != null) {
             nodeResolver.requireFolder(parentId);
+            spaceId = nodeResolver.resolveSpaceId(null, parentId);
         }
 
-        var created = nodeService.create(new CreateNodeRequest(parentId, action.name().trim(), NodeType.FOLDER));
-        return "Создана папка «" + created.name() + "»" + (parentId == null ? " (корень)" : "");
+        var created = nodeService.create(
+                new CreateNodeRequest(spaceId, parentId, action.name().trim(), NodeType.FOLDER));
+        return "Создана папка «" + created.name() + "»" + (parentId == null ? " (ветка)" : "");
     }
 
     private String deleteFolder(AiPlanDto.AiPlanActionDto action) {
@@ -108,7 +112,8 @@ public class VaultActionExecutor {
             return action.targetParentNodeId();
         }
         if (action.targetFolderPath() != null && !action.targetFolderPath().isEmpty()) {
-            return nodeResolver.resolveFolderByPath(action.targetFolderPath()).getId();
+            UUID spaceId = nodeResolver.resolveSpaceId(null, action.parentNodeId(), action.targetFolderPath());
+            return nodeResolver.resolveFolderByPath(spaceId, action.targetFolderPath()).getId();
         }
         return null;
     }
@@ -164,7 +169,8 @@ public class VaultActionExecutor {
             return node.getId();
         }
         if (action.folderPath() != null && !action.folderPath().isEmpty()) {
-            Node folder = nodeResolver.resolveFolderByPath(action.folderPath());
+            UUID spaceId = nodeResolver.resolveSpaceId(null, action.parentNodeId(), action.folderPath());
+            Node folder = nodeResolver.resolveFolderByPath(spaceId, action.folderPath());
             return folder.getId();
         }
         throw new ApiException(HttpStatus.BAD_REQUEST, "NODE_REFERENCE_REQUIRED",

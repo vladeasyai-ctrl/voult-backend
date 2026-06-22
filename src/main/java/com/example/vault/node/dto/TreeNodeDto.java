@@ -9,6 +9,7 @@ import java.util.UUID;
 
 public record TreeNodeDto(
         UUID id,
+        UUID spaceId,
         UUID parentId,
         String name,
         NodeType type,
@@ -17,12 +18,12 @@ public record TreeNodeDto(
         List<TreeNodeDto> children
 ) {
     public TreeNodeDto withChildren(List<TreeNodeDto> children) {
-        return new TreeNodeDto(id, parentId, name, type, createdAt, updatedAt, children);
+        return new TreeNodeDto(id, spaceId, parentId, name, type, createdAt, updatedAt, children);
     }
 
     public static TreeNodeDto leaf(NodeDto node) {
         return new TreeNodeDto(
-                node.id(), node.parentId(), node.name(), node.type(),
+                node.id(), node.spaceId(), node.parentId(), node.name(), node.type(),
                 node.createdAt(), node.updatedAt(), new ArrayList<>()
         );
     }
