@@ -156,6 +156,9 @@ public class DocumentService {
         String aiSummary = metadataService.findByDocumentId(document.getId())
                 .map(DocumentMetadata::getAiSummary)
                 .orElse(null);
+        String mimeType = assetRepository.findById(document.getAssetId())
+                .map(asset -> asset.getMimeType())
+                .orElse(null);
         return new DocumentDto(
                 base.id(),
                 base.nodeId(),
@@ -163,6 +166,7 @@ public class DocumentService {
                 base.title(),
                 base.description(),
                 aiSummary,
+                mimeType,
                 base.createdAt(),
                 base.updatedAt()
         );
