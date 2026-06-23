@@ -1,0 +1,129 @@
+package com.example.vault.importing.service;
+
+import com.example.vault.ai.DocumentAiAnalyzer;
+import com.example.vault.asset.service.AssetService;
+import com.example.vault.importing.dto.ImportProposalDto;
+import com.example.vault.node.dto.TreeNodeDto;
+import com.example.vault.node.service.NodeService;
+import com.example.vault.space.repository.SpaceRepository;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+@Slf4j
+@Component
+public class ImportProcessingWorker {
+
+    private final DocumentAiAnalyzer documentAiAnalyzer;
+    private final NodeService nodeService;
+    private final SpaceRepository spaceRepository;
+    private final ImportSessionService importSessionService;
+    private final AssetService assetService;
+
+    public ImportProcessingWorker(
+            DocumentAiAnalyzer documentAiAnalyzer,
+            NodeService nodeService,
+            SpaceRepository spaceRepository,
+            @Lazy ImportSessionService importSessionService,
+            AssetService assetService
+    ) {
+        this.documentAiAnalyzer = documentAiAnalyzer;
+        this.nodeService = nodeService;
+        this.spaceRepository = spaceRepository;
+        this.importSessionService = importSessionService;
+        this.assetService = assetService;
+    }
+
+    @Async
+    public void processAsync(UUID importId, byte[] content, String filename, String mimeType) {
+        try {
+            var session = importSessionService.findSessionOrThrow(importId);
+            importSessionService.publishEvent(
+                    importId,
+                    ImportSessionService.EVENT_UPLOAD_RECEIVED,
+                    session,
+                    null,
+                    "Upload received"
+            );
+
+            importSessionService.publishEvent(
+                    importId,
+                    ImportSessionService.EVENT_STORING,
+                    session,
+                    null,
+                    "Saving file"
+            );
+            importSessionService.markAnalyzing(importId);
+            session = importSessionService.findSessionOrThrow(importId);
+
+            importSessionService.publishEvent(
+                    importId,
+                    ImportSessionService.EVENT_ANALYZING,
+                    session,
+                    null,
+                    "Analyzing file"
+            );
+
+            List<TreeNodeDto> tree = loadTree();
+            UUID assetId = session.getAssetId();
+
+            CompletableFuture<Void> storageFuture = CompletableFuture.runAsync(() -> {
+                assetService.uploadToStorage(assetId, content, mimeType);
+                var updated = importSessionService.findSessionOrThrow(importId);
+                importSessionService.publishEvent(
+                        importId,
+                        ImportSessionService.EVENT_STORAGE_COMPLETE,
+                        updated,
+                        null,
+                        "File saved"
+                );
+            });
+
+            CompletableFuture<ImportProposalDto> aiFuture = CompletableFuture.supplyAsync(() ->
+                    documentAiAnalyzer.analyze(content, mimeType, filename, tree));
+
+            CompletableFuture.allOf(storageFuture, aiFuture).join();
+            ImportProposalDto proposal = aiFuture.join();
+
+            ImportSessionService.ImportCompletionResult result =
+                    importSessionService.completeWithAutoCreate(importId, proposal);
+
+            importSessionService.publishEvent(
+                    importId,
+                    ImportSessionService.EVENT_PROPOSAL_READY,
+                    result.session(),
+                    result.document(),
+                    "Document created"
+            );
+        } catch (Exception e) {
+            log.error("Import processing failed for {}", importId, e);
+            String message = e.getMessage() != null ? e.getMessage() : "Import failed";
+            importSessionService.markFailed(importId, message);
+            try {
+                var failed = importSessionService.findSessionOrThrow(importId);
+                importSessionService.publishEvent(
+                        importId,
+                        ImportSessionService.EVENT_FAILED,
+                        failed,
+                        null,
+                        message
+                );
+            } catch (Exception publishError) {
+                log.debug("Failed to publish import failure event for {}", importId, publishError);
+            }
+        }
+    }
+
+    private List<TreeNodeDto> loadTree() {
+        List<TreeNodeDto> tree = new ArrayList<>();
+        spaceRepository.findAllByOrderBySortOrderAscNameAsc()
+                .forEach(space -> tree.addAll(nodeService.getTree(space.getId())));
+        return tree;
+    }
+}

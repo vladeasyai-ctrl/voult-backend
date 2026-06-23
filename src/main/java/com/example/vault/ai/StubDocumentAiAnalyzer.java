@@ -30,14 +30,27 @@ public class StubDocumentAiAnalyzer implements DocumentAiAnalyzer {
     public ImportProposalDto analyze(UUID assetId, String originalFilename, List<TreeNodeDto> tree) {
         Asset asset = assetRepository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Asset", assetId));
-
         String filename = originalFilename != null && !originalFilename.isBlank()
                 ? originalFilename
                 : extractFilename(asset.getStorageKey());
+        return analyze(null, asset.getMimeType(), filename, tree);
+    }
+
+    @Override
+    public ImportProposalDto analyze(
+            byte[] content,
+            String mimeType,
+            String originalFilename,
+            List<TreeNodeDto> tree
+    ) {
+        String filename = originalFilename != null && !originalFilename.isBlank()
+                ? originalFilename
+                : "file";
         String baseName = stripExtension(filename);
         String lower = baseName.toLowerCase(Locale.ROOT);
+        String resolvedMimeType = mimeType != null ? mimeType : "application/octet-stream";
 
-        List<String> tags = inferTags(lower, asset.getMimeType());
+        List<String> tags = inferTags(lower, resolvedMimeType);
         String summary = buildSummary(baseName, tags);
         List<String> folderPath = suggestFolderPath(lower, tags, tree);
         String title = prettifyTitle(baseName);

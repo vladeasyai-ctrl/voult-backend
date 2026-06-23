@@ -10,9 +10,13 @@ import com.example.vault.document.mapper.DocumentMapper;
 import com.example.vault.document.repository.DocumentRepository;
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
+import com.example.vault.importing.dto.ConfirmImportRequest;
 import com.example.vault.importing.dto.ImportProposalDto;
+import com.example.vault.importing.entity.ImportSession;
 import com.example.vault.metadata.entity.DocumentMetadata;
 import com.example.vault.metadata.service.DocumentMetadataService;
+import com.example.vault.node.dto.MoveNodeRequest;
+import com.example.vault.node.dto.ResolveImportResult;
 import com.example.vault.node.entity.Node;
 import com.example.vault.node.repository.NodeRepository;
 import com.example.vault.node.service.NodeService;
@@ -127,6 +131,38 @@ public class DocumentService {
         return documentRepository.findByNodeId(nodeId)
                 .map(this::toDto)
                 .orElseThrow(() -> new ResourceNotFoundException("Document", "node:" + nodeId));
+    }
+
+    @Transactional
+    public DocumentDto updateFromImport(UUID documentId, ConfirmImportRequest request, ImportSession session) {
+        Document document = findDocumentOrThrow(documentId);
+        document.setTitle(request.title());
+        document.setDescription(request.summary());
+        Document saved = documentRepository.save(document);
+
+        metadataService.updateFromAi(saved.getId(), request.summary(), request.tags());
+
+        List<String> folderPath = request.folderPath() != null
+                ? request.folderPath()
+                : (session.getProposal() != null ? session.getProposal().folderPath() : List.of());
+        boolean createMissing = session.getProposal() != null && session.getProposal().createMissingFolders();
+
+        ResolveImportResult resolved = nodeService.resolveImportParentWithTracking(
+                request.spaceId() != null ? request.spaceId() : session.getSpaceId(),
+                request.parentId() != null ? request.parentId() : session.getParentId(),
+                folderPath,
+                createMissing
+        );
+
+        Node documentNode = nodeRepository.findById(saved.getNodeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Node", saved.getNodeId()));
+        UUID currentParentId = documentNode.getParentId();
+        if (!java.util.Objects.equals(currentParentId, resolved.parentId())) {
+            nodeService.move(saved.getNodeId(), new MoveNodeRequest(resolved.parentId()));
+        }
+
+        metadataService.rebuildSearchVector(saved);
+        return toDto(saved);
     }
 
     @Transactional

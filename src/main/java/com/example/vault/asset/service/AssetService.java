@@ -39,24 +39,41 @@ public class AssetService {
         if (file == null || file.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "EMPTY_FILE", "File must not be empty");
         }
-
-        UUID assetId = UUID.randomUUID();
-        String storageKey = buildStorageKey(assetId, file.getOriginalFilename());
         byte[] content = readContent(file);
-        String checksum = computeChecksum(content);
         String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        AssetDto asset = createAssetRecord(content, file.getOriginalFilename(), contentType, file.getSize());
+        uploadToStorage(asset.id(), content, contentType);
+        return asset;
+    }
 
-        storageService.upload(storageKey, new java.io.ByteArrayInputStream(content), content.length, contentType);
+    @Transactional
+    public AssetDto createAssetRecord(byte[] content, String originalFilename, String contentType, Long size) {
+        UUID assetId = UUID.randomUUID();
+        String storageKey = buildStorageKey(assetId, originalFilename);
+        String checksum = computeChecksum(content);
+        String resolvedContentType = contentType != null ? contentType : "application/octet-stream";
 
         Asset asset = Asset.builder()
                 .id(assetId)
                 .storageKey(storageKey)
-                .mimeType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
-                .size(file.getSize())
+                .mimeType(resolvedContentType)
+                .size(size != null ? size : content.length)
                 .checksum(checksum)
                 .build();
 
         return assetMapper.toDto(assetRepository.save(asset));
+    }
+
+    public void uploadToStorage(UUID assetId, byte[] content, String contentType) {
+        Asset asset = assetRepository.findById(assetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Asset", assetId));
+        String resolvedContentType = contentType != null ? contentType : asset.getMimeType();
+        storageService.upload(
+                asset.getStorageKey(),
+                new java.io.ByteArrayInputStream(content),
+                content.length,
+                resolvedContentType
+        );
     }
 
     @Transactional(readOnly = true)

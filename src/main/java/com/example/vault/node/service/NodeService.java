@@ -5,6 +5,7 @@ import com.example.vault.exception.ResourceNotFoundException;
 import com.example.vault.node.dto.CreateNodeRequest;
 import com.example.vault.node.dto.MoveNodeRequest;
 import com.example.vault.node.dto.NodeDto;
+import com.example.vault.node.dto.ResolveImportResult;
 import com.example.vault.node.dto.TreeNodeDto;
 import com.example.vault.node.dto.UpdateNodeRequest;
 import com.example.vault.node.entity.Node;
@@ -179,6 +180,17 @@ public class NodeService {
             List<String> segments,
             boolean createMissing
     ) {
+        return resolveOrCreateFolderPath(spaceId, parentId, segments, createMissing, null);
+    }
+
+    @Transactional
+    public UUID resolveOrCreateFolderPath(
+            UUID spaceId,
+            UUID parentId,
+            List<String> segments,
+            boolean createMissing,
+            List<UUID> createdFolderIds
+    ) {
         requireSpace(spaceId);
         validateParent(spaceId, parentId);
         UUID currentParent = parentId;
@@ -211,16 +223,27 @@ public class NodeService {
                     .name(segment)
                     .type(NodeType.FOLDER)
                     .build();
-            currentParent = nodeRepository.save(folder).getId();
+            Node saved = nodeRepository.save(folder);
+            if (createdFolderIds != null) {
+                createdFolderIds.add(saved.getId());
+            }
+            currentParent = saved.getId();
         }
         return currentParent;
     }
 
-    /**
-     * Resolves the target folder for AI import confirm.
-     * When {@code anchorParentId} is set (file dropped on a folder), {@code folderPath} from AI
-     * is treated as an absolute path from space root branches and stripped to a relative suffix.
-     */
+    @Transactional
+    public ResolveImportResult resolveImportParentWithTracking(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissing
+    ) {
+        List<UUID> createdFolderIds = new ArrayList<>();
+        UUID parentId = resolveImportParentInternal(spaceId, anchorParentId, folderPath, createMissing, createdFolderIds);
+        return new ResolveImportResult(parentId, List.copyOf(createdFolderIds));
+    }
+
     @Transactional
     public UUID resolveImportParent(
             UUID spaceId,
@@ -228,10 +251,20 @@ public class NodeService {
             List<String> folderPath,
             boolean createMissing
     ) {
+        return resolveImportParentInternal(spaceId, anchorParentId, folderPath, createMissing, null);
+    }
+
+    private UUID resolveImportParentInternal(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissing,
+            List<UUID> createdFolderIds
+    ) {
         UUID resolvedSpaceId = resolveSpaceId(anchorParentId, spaceId);
         List<String> segments = normalizePathSegments(folderPath);
         if (anchorParentId == null) {
-            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing, createdFolderIds);
         }
         if (segments.isEmpty()) {
             return anchorParentId;
@@ -240,7 +273,7 @@ public class NodeService {
         List<String> anchorPath = getPathFromRoot(anchorParentId);
         List<String> relative = stripLeadingPrefixIgnoreCase(anchorPath, segments);
         if (relative != null) {
-            return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, relative, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, relative, createMissing, createdFolderIds);
         }
 
         Node anchor = findNodeOrThrow(anchorParentId);
@@ -258,10 +291,10 @@ public class NodeService {
         Optional<Node> rootMatch = nodeRepository.findFolderBySpaceParentAndName(
                 resolvedSpaceId, null, segments.getFirst(), NodeType.FOLDER);
         if (rootMatch.isPresent()) {
-            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing, createdFolderIds);
         }
 
-        return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, segments, createMissing);
+        return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, segments, createMissing, createdFolderIds);
     }
 
     private List<String> getPathFromRoot(UUID nodeId) {

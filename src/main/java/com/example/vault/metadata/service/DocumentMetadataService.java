@@ -82,6 +82,15 @@ public class DocumentMetadataService {
         );
     }
 
+    @Transactional
+    public void updateFromAi(UUID documentId, String aiSummary, List<String> aiTags) {
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseThrow(() -> new IllegalStateException("Metadata not found for document " + documentId));
+        metadata.setAiSummary(aiSummary);
+        metadata.setAiTags(aiTags);
+        metadataRepository.save(metadata);
+    }
+
     @Transactional(readOnly = true)
     public Optional<DocumentMetadata> findByDocumentId(UUID documentId) {
         return metadataRepository.findByDocumentId(documentId);

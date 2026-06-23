@@ -51,19 +51,28 @@ public class OpenAiDocumentAiAnalyzer implements DocumentAiAnalyzer {
     public ImportProposalDto analyze(UUID assetId, String originalFilename, List<TreeNodeDto> tree) {
         Asset asset = assetRepository.findById(assetId)
                 .orElseThrow(() -> new ResourceNotFoundException("Asset", assetId));
+        byte[] content = storageService.download(asset.getStorageKey());
+        return analyze(content, asset.getMimeType(), originalFilename, tree);
+    }
 
-        String mimeType = asset.getMimeType();
+    @Override
+    public ImportProposalDto analyze(
+            byte[] content,
+            String mimeType,
+            String originalFilename,
+            List<TreeNodeDto> tree
+    ) {
         String filename = originalFilename != null && !originalFilename.isBlank()
                 ? originalFilename
-                : extractFilename(asset.getStorageKey());
+                : "file";
         String treeJson = buildTreeJson(tree);
         AiSettingsService.ResolvedAiConfig config = aiSettingsService.resolveConfig();
 
         if (isImage(mimeType)) {
-            return analyzeImage(asset, filename, mimeType, treeJson, config);
+            return analyzeImageBytes(content, filename, mimeType, treeJson, config);
         }
         if (isPdf(mimeType, filename)) {
-            return analyzePdf(asset, filename, mimeType, treeJson, config);
+            return analyzePdfBytes(content, filename, mimeType, treeJson, config);
         }
 
         throw new ApiException(HttpStatus.BAD_REQUEST, "UNSUPPORTED_FILE_TYPE",
@@ -75,19 +84,18 @@ public class OpenAiDocumentAiAnalyzer implements DocumentAiAnalyzer {
         return aiProperties.isEnabled();
     }
 
-    private ImportProposalDto analyzeImage(
-            Asset asset,
+    private ImportProposalDto analyzeImageBytes(
+            byte[] imageBytes,
             String filename,
             String mimeType,
             String treeJson,
             AiSettingsService.ResolvedAiConfig config
     ) {
-        if (asset.getSize() != null && asset.getSize() > MAX_IMAGE_BYTES) {
+        if (imageBytes.length > MAX_IMAGE_BYTES) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE",
                     "Image exceeds 20 MB limit for AI analysis");
         }
 
-        byte[] imageBytes = storageService.download(asset.getStorageKey());
         String userMessage = """
                 Проанализируй фотографию и предложи место в архиве.
                 filename: %s
@@ -111,19 +119,18 @@ public class OpenAiDocumentAiAnalyzer implements DocumentAiAnalyzer {
         return parseProposal(json, "Фото", "photo");
     }
 
-    private ImportProposalDto analyzePdf(
-            Asset asset,
+    private ImportProposalDto analyzePdfBytes(
+            byte[] pdfBytes,
             String filename,
             String mimeType,
             String treeJson,
             AiSettingsService.ResolvedAiConfig config
     ) {
-        if (asset.getSize() != null && asset.getSize() > MAX_PDF_BYTES) {
+        if (pdfBytes.length > MAX_PDF_BYTES) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "FILE_TOO_LARGE",
                     "PDF exceeds 50 MB limit for AI analysis");
         }
 
-        byte[] pdfBytes = storageService.download(asset.getStorageKey());
         PdfDocumentExtractor.PdfExtractionResult extracted = pdfExtractor.extract(pdfBytes);
 
         if (extracted.hasTextLayer()) {
@@ -138,6 +145,28 @@ public class OpenAiDocumentAiAnalyzer implements DocumentAiAnalyzer {
 
         log.debug("Analyzing PDF {} via vision fallback (scan)", filename);
         return analyzePdfScan(filename, mimeType, treeJson, config, extracted);
+    }
+
+    private ImportProposalDto analyzeImage(
+            Asset asset,
+            String filename,
+            String mimeType,
+            String treeJson,
+            AiSettingsService.ResolvedAiConfig config
+    ) {
+        byte[] imageBytes = storageService.download(asset.getStorageKey());
+        return analyzeImageBytes(imageBytes, filename, mimeType, treeJson, config);
+    }
+
+    private ImportProposalDto analyzePdf(
+            Asset asset,
+            String filename,
+            String mimeType,
+            String treeJson,
+            AiSettingsService.ResolvedAiConfig config
+    ) {
+        byte[] pdfBytes = storageService.download(asset.getStorageKey());
+        return analyzePdfBytes(pdfBytes, filename, mimeType, treeJson, config);
     }
 
     private ImportProposalDto analyzePdfText(

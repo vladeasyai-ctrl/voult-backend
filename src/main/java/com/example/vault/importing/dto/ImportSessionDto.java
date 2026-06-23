@@ -8,6 +8,9 @@ import java.util.UUID;
 public record ImportSessionDto(
         UUID id,
         UUID assetId,
+        UUID documentId,
+        UUID spaceId,
+        UUID parentId,
         ImportStatus status,
         ImportProposalDto proposal,
         String errorMessage,

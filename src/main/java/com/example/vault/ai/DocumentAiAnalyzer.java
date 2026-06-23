@@ -10,5 +10,12 @@ public interface DocumentAiAnalyzer {
 
     ImportProposalDto analyze(UUID assetId, String originalFilename, List<TreeNodeDto> tree);
 
+    ImportProposalDto analyze(
+            byte[] content,
+            String mimeType,
+            String originalFilename,
+            List<TreeNodeDto> tree
+    );
+
     boolean isEnabled();
 }
