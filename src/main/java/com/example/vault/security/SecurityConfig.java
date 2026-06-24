@@ -45,6 +45,8 @@ public class SecurityConfig {
                                 "/api-docs/**",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/remote-upload-sessions/token/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/remote-upload-sessions/token/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )

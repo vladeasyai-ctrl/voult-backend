@@ -12,11 +12,13 @@ import java.util.UUID;
 
 public interface NodeRepository extends JpaRepository<Node, UUID> {
 
-    List<Node> findAllByParentIdIsNullOrderByNameAsc();
+    List<Node> findAllBySpaceIdAndParentIdIsNullOrderByNameAsc(UUID spaceId);
+
+    List<Node> findAllBySpaceIdAndParentIdOrderByNameAsc(UUID spaceId, UUID parentId);
+
+    List<Node> findAllBySpaceIdOrderByNameAsc(UUID spaceId);
 
     List<Node> findAllByParentIdOrderByNameAsc(UUID parentId);
-
-    List<Node> findAllByOrderByNameAsc();
 
     boolean existsByParentId(UUID parentId);
 
@@ -24,12 +26,20 @@ public interface NodeRepository extends JpaRepository<Node, UUID> {
 
     @Query("""
             SELECT n FROM Node n
-            WHERE n.type = :type AND LOWER(n.name) = LOWER(:name)
+            WHERE n.spaceId = :spaceId AND n.type = :type AND LOWER(n.name) = LOWER(:name)
             AND ((:parentId IS NULL AND n.parentId IS NULL) OR n.parentId = :parentId)
             """)
-    Optional<Node> findFolderByParentAndName(
+    Optional<Node> findFolderBySpaceParentAndName(
+            @Param("spaceId") UUID spaceId,
             @Param("parentId") UUID parentId,
             @Param("name") String name,
             @Param("type") NodeType type
     );
+
+    @Query("""
+            SELECT DISTINCT n.spaceId FROM Node n
+            WHERE n.parentId IS NULL AND n.type = com.example.vault.node.entity.NodeType.FOLDER
+            AND LOWER(n.name) = LOWER(:name)
+            """)
+    List<UUID> findDistinctSpaceIdsByRootBranchName(@Param("name") String name);
 }

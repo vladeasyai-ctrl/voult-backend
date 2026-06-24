@@ -16,6 +16,7 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -33,6 +34,15 @@ public class ImportSession extends AuditableEntity {
     @Column(name = "asset_id", nullable = false, unique = true)
     private UUID assetId;
 
+    @Column(name = "document_id")
+    private UUID documentId;
+
+    @Column(name = "space_id")
+    private UUID spaceId;
+
+    @Column(name = "parent_id")
+    private UUID parentId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ImportStatus status;
@@ -40,6 +50,10 @@ public class ImportSession extends AuditableEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private ImportProposalDto proposal;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "created_folder_ids", columnDefinition = "jsonb")
+    private List<UUID> createdFolderIds;
 
     @Column(name = "error_message")
     private String errorMessage;

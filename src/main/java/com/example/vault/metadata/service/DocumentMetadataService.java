@@ -38,26 +38,29 @@ public class DocumentMetadataService {
             String classificationLabel,
             Double classificationConfidence
     ) {
-        DocumentMetadata.DocumentMetadataBuilder builder = DocumentMetadata.builder()
-                .id(UUID.randomUUID())
-                .documentId(documentId)
-                .aiSummary(aiSummary)
-                .aiTags(aiTags)
-                .aiStatus(AiStatus.COMPLETED)
-                .aiProcessedAt(Instant.now());
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseGet(() -> DocumentMetadata.builder()
+                        .id(UUID.randomUUID())
+                        .documentId(documentId)
+                        .build());
+
+        metadata.setAiSummary(aiSummary);
+        metadata.setAiTags(aiTags);
+        metadata.setAiStatus(AiStatus.COMPLETED);
+        metadata.setAiProcessedAt(Instant.now());
 
         if (ocrText != null && !ocrText.isBlank()) {
-            builder.ocrText(ocrText);
-            builder.ocrStatus(AiStatus.COMPLETED);
+            metadata.setOcrText(ocrText);
+            metadata.setOcrStatus(AiStatus.COMPLETED);
         }
         if (classificationLabel != null && !classificationLabel.isBlank()) {
-            builder.classificationLabel(classificationLabel);
+            metadata.setClassificationLabel(classificationLabel);
             if (classificationConfidence != null) {
-                builder.classificationConfidence(BigDecimal.valueOf(classificationConfidence));
+                metadata.setClassificationConfidence(BigDecimal.valueOf(classificationConfidence));
             }
         }
 
-        return metadataRepository.save(builder.build());
+        return metadataRepository.save(metadata);
     }
 
     @Transactional
@@ -80,6 +83,77 @@ public class DocumentMetadataService {
                 summary,
                 tags
         );
+    }
+
+    @Transactional
+    public void updateFromAi(UUID documentId, String aiSummary, List<String> aiTags) {
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseThrow(() -> new IllegalStateException("Metadata not found for document " + documentId));
+        metadata.setAiSummary(aiSummary);
+        metadata.setAiTags(aiTags);
+        metadataRepository.save(metadata);
+    }
+
+    @Transactional
+    public DocumentMetadata createPending(UUID documentId) {
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseGet(() -> DocumentMetadata.builder()
+                        .id(UUID.randomUUID())
+                        .documentId(documentId)
+                        .build());
+        metadata.setAiStatus(AiStatus.PENDING);
+        return metadataRepository.save(metadata);
+    }
+
+    @Transactional
+    public void markProcessing(UUID documentId) {
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseGet(() -> createPending(documentId));
+        metadata.setAiStatus(AiStatus.PROCESSING);
+        metadataRepository.save(metadata);
+    }
+
+    @Transactional
+    public void markFailed(UUID documentId) {
+        metadataRepository.findByDocumentId(documentId).ifPresent(metadata -> {
+            metadata.setAiStatus(AiStatus.FAILED);
+            metadata.setAiProcessedAt(Instant.now());
+            metadataRepository.save(metadata);
+        });
+    }
+
+    @Transactional
+    public void completeFromAi(
+            UUID documentId,
+            String aiSummary,
+            List<String> aiTags,
+            String ocrText,
+            String classificationLabel,
+            Double classificationConfidence
+    ) {
+        DocumentMetadata metadata = metadataRepository.findByDocumentId(documentId)
+                .orElseGet(() -> DocumentMetadata.builder()
+                        .id(UUID.randomUUID())
+                        .documentId(documentId)
+                        .build());
+
+        metadata.setAiSummary(aiSummary);
+        metadata.setAiTags(aiTags);
+        metadata.setAiStatus(AiStatus.COMPLETED);
+        metadata.setAiProcessedAt(Instant.now());
+
+        if (ocrText != null && !ocrText.isBlank()) {
+            metadata.setOcrText(ocrText);
+            metadata.setOcrStatus(AiStatus.COMPLETED);
+        }
+        if (classificationLabel != null && !classificationLabel.isBlank()) {
+            metadata.setClassificationLabel(classificationLabel);
+            if (classificationConfidence != null) {
+                metadata.setClassificationConfidence(BigDecimal.valueOf(classificationConfidence));
+            }
+        }
+
+        metadataRepository.save(metadata);
     }
 
     @Transactional(readOnly = true)

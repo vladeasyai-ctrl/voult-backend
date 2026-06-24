@@ -55,8 +55,14 @@ public class AiSettingsService {
 
     @Transactional(readOnly = true)
     public ResolvedAiConfig resolveConfig() {
-        UUID userId = currentUserService.requireCurrentUserId();
-        AiUserSettings settings = settingsRepository.findByUserId(userId).orElse(null);
+        return resolveConfigForUser(currentUserService.findCurrentUserId().orElse(null));
+    }
+
+    @Transactional(readOnly = true)
+    public ResolvedAiConfig resolveConfigForUser(UUID userId) {
+        AiUserSettings settings = userId != null
+                ? settingsRepository.findByUserId(userId).orElse(null)
+                : null;
 
         String provider = settings != null && settings.getProvider() != null
                 ? settings.getProvider()

@@ -2,15 +2,18 @@ package com.example.vault.node.service;
 
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
+import com.example.vault.node.FolderAppearanceKeys;
 import com.example.vault.node.dto.CreateNodeRequest;
 import com.example.vault.node.dto.MoveNodeRequest;
 import com.example.vault.node.dto.NodeDto;
+import com.example.vault.node.dto.ResolveImportResult;
 import com.example.vault.node.dto.TreeNodeDto;
 import com.example.vault.node.dto.UpdateNodeRequest;
 import com.example.vault.node.entity.Node;
 import com.example.vault.node.entity.NodeType;
 import com.example.vault.node.mapper.NodeMapper;
 import com.example.vault.node.repository.NodeRepository;
+import com.example.vault.space.repository.SpaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,10 +32,12 @@ public class NodeService {
 
     private final NodeRepository nodeRepository;
     private final NodeMapper nodeMapper;
+    private final SpaceRepository spaceRepository;
 
     @Transactional(readOnly = true)
-    public List<TreeNodeDto> getTree() {
-        List<Node> allNodes = nodeRepository.findAllByOrderByNameAsc();
+    public List<TreeNodeDto> getTree(UUID spaceId) {
+        requireSpace(spaceId);
+        List<Node> allNodes = nodeRepository.findAllBySpaceIdOrderByNameAsc(spaceId);
         Map<UUID, List<Node>> childrenByParent = allNodes.stream()
                 .filter(node -> node.getParentId() != null)
                 .collect(Collectors.groupingBy(Node::getParentId));
@@ -45,7 +50,8 @@ public class NodeService {
 
     @Transactional
     public NodeDto create(CreateNodeRequest request) {
-        validateParent(request.parentId());
+        requireSpace(request.spaceId());
+        validateParent(request.spaceId(), request.parentId());
         if (request.type() == NodeType.DOCUMENT) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NODE_TYPE",
                     "DOCUMENT nodes must be created via document API");
@@ -53,9 +59,13 @@ public class NodeService {
 
         Node node = Node.builder()
                 .id(UUID.randomUUID())
+                .spaceId(request.spaceId())
                 .parentId(request.parentId())
                 .name(request.name())
                 .type(request.type())
+                .iconKey(FolderAppearanceKeys.resolveIconKey(request.iconKey()))
+                .color(FolderAppearanceKeys.resolveColor(request.color()))
+                .description(normalizeDescription(request.description()))
                 .build();
 
         return nodeMapper.toDto(nodeRepository.save(node));
@@ -64,7 +74,26 @@ public class NodeService {
     @Transactional
     public NodeDto update(UUID id, UpdateNodeRequest request) {
         Node node = findNodeOrThrow(id);
-        node.setName(request.name());
+        if (request.name() != null) {
+            if (request.name().isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NAME", "Name cannot be blank");
+            }
+            node.setName(request.name().trim());
+        }
+        if (node.getType() == NodeType.FOLDER) {
+            if (request.iconKey() != null) {
+                node.setIconKey(FolderAppearanceKeys.resolveIconKey(request.iconKey()));
+            }
+            if (request.color() != null) {
+                node.setColor(FolderAppearanceKeys.resolveColor(request.color()));
+            }
+            if (request.description() != null) {
+                node.setDescription(normalizeDescription(request.description()));
+            }
+        } else if (request.iconKey() != null || request.color() != null || request.description() != null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NODE_TYPE",
+                    "Only folders support appearance fields");
+        }
         return nodeMapper.toDto(nodeRepository.save(node));
     }
 
@@ -80,7 +109,7 @@ public class NodeService {
         if (request.parentId() != null && isDescendant(request.parentId(), id)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MOVE", "Cannot move node into its descendant");
         }
-        validateParent(request.parentId());
+        validateParent(node.getSpaceId(), request.parentId());
         node.setParentId(request.parentId());
         return nodeMapper.toDto(nodeRepository.save(node));
     }
@@ -106,9 +135,11 @@ public class NodeService {
     }
 
     public Node createDocumentNode(UUID parentId, String name) {
-        validateParent(parentId);
+        UUID spaceId = resolveSpaceId(parentId, null);
+        validateParent(spaceId, parentId);
         Node node = Node.builder()
                 .id(UUID.randomUUID())
+                .spaceId(spaceId)
                 .parentId(parentId)
                 .name(name)
                 .type(NodeType.DOCUMENT)
@@ -116,11 +147,27 @@ public class NodeService {
         return nodeRepository.save(node);
     }
 
-    private void validateParent(UUID parentId) {
+    public UUID resolveSpaceId(UUID parentId, UUID explicitSpaceId) {
+        if (parentId != null) {
+            return findNodeOrThrow(parentId).getSpaceId();
+        }
+        if (explicitSpaceId != null) {
+            requireSpace(explicitSpaceId);
+            return explicitSpaceId;
+        }
+        throw new ApiException(HttpStatus.BAD_REQUEST, "SPACE_REQUIRED",
+                "spaceId is required when parentId is null");
+    }
+
+    private void validateParent(UUID spaceId, UUID parentId) {
         if (parentId == null) {
             return;
         }
         Node parent = findNodeOrThrow(parentId);
+        if (!parent.getSpaceId().equals(spaceId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PARENT",
+                    "Parent must belong to the same space");
+        }
         if (parent.getType() != NodeType.FOLDER) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PARENT",
                     "Parent must be a FOLDER node");
@@ -150,8 +197,25 @@ public class NodeService {
     }
 
     @Transactional
-    public UUID resolveOrCreateFolderPath(UUID parentId, List<String> segments, boolean createMissing) {
-        validateParent(parentId);
+    public UUID resolveOrCreateFolderPath(
+            UUID spaceId,
+            UUID parentId,
+            List<String> segments,
+            boolean createMissing
+    ) {
+        return resolveOrCreateFolderPath(spaceId, parentId, segments, createMissing, null);
+    }
+
+    @Transactional
+    public UUID resolveOrCreateFolderPath(
+            UUID spaceId,
+            UUID parentId,
+            List<String> segments,
+            boolean createMissing,
+            List<UUID> createdFolderIds
+    ) {
+        requireSpace(spaceId);
+        validateParent(spaceId, parentId);
         UUID currentParent = parentId;
 
         if (segments == null || segments.isEmpty()) {
@@ -164,8 +228,8 @@ public class NodeService {
             }
             String segment = rawSegment.trim();
             UUID parent = currentParent;
-            Optional<Node> existing = nodeRepository.findFolderByParentAndName(
-                    parent, segment, NodeType.FOLDER
+            Optional<Node> existing = nodeRepository.findFolderBySpaceParentAndName(
+                    spaceId, parent, segment, NodeType.FOLDER
             );
             if (existing.isPresent()) {
                 currentParent = existing.get().getId();
@@ -177,25 +241,95 @@ public class NodeService {
             }
             Node folder = Node.builder()
                     .id(UUID.randomUUID())
+                    .spaceId(spaceId)
                     .parentId(currentParent)
                     .name(segment)
                     .type(NodeType.FOLDER)
+                    .iconKey(FolderAppearanceKeys.DEFAULT_ICON)
+                    .color(FolderAppearanceKeys.DEFAULT_COLOR)
                     .build();
-            currentParent = nodeRepository.save(folder).getId();
+            Node saved = nodeRepository.save(folder);
+            if (createdFolderIds != null) {
+                createdFolderIds.add(saved.getId());
+            }
+            currentParent = saved.getId();
         }
         return currentParent;
     }
 
-    /**
-     * Resolves the target folder for AI import confirm.
-     * When {@code anchorParentId} is set (file dropped on a folder), {@code folderPath} from AI
-     * is treated as an absolute path from vault roots and stripped to a relative suffix.
-     */
     @Transactional
-    public UUID resolveImportParent(UUID anchorParentId, List<String> folderPath, boolean createMissing) {
+    public ResolveImportResult resolveImportParentWithTracking(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissing
+    ) {
+        List<UUID> createdFolderIds = new ArrayList<>();
+        UUID parentId = resolveImportParentInternal(spaceId, anchorParentId, folderPath, createMissing, createdFolderIds);
+        return new ResolveImportResult(parentId, List.copyOf(createdFolderIds));
+    }
+
+    @Transactional
+    public ResolveImportResult resolveImportParentForProposal(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissingFolders
+    ) {
+        boolean createMissing = createMissingFolders
+                || !canResolveImportParentNoThrow(spaceId, anchorParentId, folderPath);
+        List<UUID> createdFolderIds = new ArrayList<>();
+        UUID parentId = resolveImportParentInternal(
+                spaceId, anchorParentId, folderPath, createMissing, createdFolderIds);
+        return new ResolveImportResult(parentId, List.copyOf(createdFolderIds));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canResolveImportParent(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath
+    ) {
+        return canResolveImportParentNoThrow(spaceId, anchorParentId, folderPath);
+    }
+
+    private boolean canResolveImportParentNoThrow(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath
+    ) {
+        try {
+            resolveImportParentInternal(spaceId, anchorParentId, folderPath, false, null);
+            return true;
+        } catch (ApiException e) {
+            if ("FOLDER_NOT_FOUND".equals(e.getCode())) {
+                return false;
+            }
+            throw e;
+        }
+    }
+
+    @Transactional
+    public UUID resolveImportParent(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissing
+    ) {
+        return resolveImportParentInternal(spaceId, anchorParentId, folderPath, createMissing, null);
+    }
+
+    private UUID resolveImportParentInternal(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissing,
+            List<UUID> createdFolderIds
+    ) {
+        UUID resolvedSpaceId = resolveSpaceId(anchorParentId, spaceId);
         List<String> segments = normalizePathSegments(folderPath);
         if (anchorParentId == null) {
-            return resolveOrCreateFolderPath(null, segments, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing, createdFolderIds);
         }
         if (segments.isEmpty()) {
             return anchorParentId;
@@ -204,7 +338,7 @@ public class NodeService {
         List<String> anchorPath = getPathFromRoot(anchorParentId);
         List<String> relative = stripLeadingPrefixIgnoreCase(anchorPath, segments);
         if (relative != null) {
-            return resolveOrCreateFolderPath(anchorParentId, relative, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, relative, createMissing, createdFolderIds);
         }
 
         Node anchor = findNodeOrThrow(anchorParentId);
@@ -219,13 +353,39 @@ public class NodeService {
             }
         }
 
-        Optional<Node> rootMatch = nodeRepository.findFolderByParentAndName(
-                null, segments.getFirst(), NodeType.FOLDER);
+        Optional<Node> rootMatch = nodeRepository.findFolderBySpaceParentAndName(
+                resolvedSpaceId, null, segments.getFirst(), NodeType.FOLDER);
         if (rootMatch.isPresent()) {
-            return resolveOrCreateFolderPath(null, segments, createMissing);
+            return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing, createdFolderIds);
         }
 
-        return resolveOrCreateFolderPath(anchorParentId, segments, createMissing);
+        Optional<UUID> existingPath = findExistingFolderPathFromRoot(resolvedSpaceId, segments);
+        if (existingPath.isPresent()) {
+            return existingPath.get();
+        }
+
+        return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, segments, createMissing, createdFolderIds);
+    }
+
+    private Optional<UUID> findExistingFolderPathFromRoot(UUID spaceId, List<String> segments) {
+        if (segments.isEmpty()) {
+            return Optional.empty();
+        }
+        UUID currentParent = null;
+        for (String rawSegment : segments) {
+            if (rawSegment == null || rawSegment.isBlank()) {
+                continue;
+            }
+            String segment = rawSegment.trim();
+            Optional<Node> existing = nodeRepository.findFolderBySpaceParentAndName(
+                    spaceId, currentParent, segment, NodeType.FOLDER
+            );
+            if (existing.isEmpty()) {
+                return Optional.empty();
+            }
+            currentParent = existing.get().getId();
+        }
+        return Optional.ofNullable(currentParent);
     }
 
     private List<String> getPathFromRoot(UUID nodeId) {
@@ -277,5 +437,19 @@ public class NodeService {
             }
         }
         return true;
+    }
+
+    private void requireSpace(UUID spaceId) {
+        if (!spaceRepository.existsById(spaceId)) {
+            throw new ResourceNotFoundException("Space", spaceId);
+        }
+    }
+
+    private String normalizeDescription(String description) {
+        if (description == null) {
+            return null;
+        }
+        String trimmed = description.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

@@ -10,6 +10,8 @@ public record DocumentDto(
         String title,
         String description,
         String aiSummary,
+        String aiStatus,
+        String mimeType,
         Instant createdAt,
         Instant updatedAt
 ) {

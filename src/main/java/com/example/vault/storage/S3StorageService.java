@@ -19,6 +19,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -79,17 +83,46 @@ public class S3StorageService implements StorageService {
 
     @Override
     public String generatePresignedDownloadUrl(String objectKey) {
+        return generatePresignedDownloadUrl(objectKey, null, false);
+    }
+
+    @Override
+    public String generatePresignedDownloadUrl(String objectKey, String filename, boolean attachment) {
         try {
-            return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            var builder = GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(storageProperties.getBucket())
                     .object(objectKey)
-                    .expiry(storageProperties.getPresignedUrlExpirySeconds())
-                    .build());
+                    .expiry(storageProperties.getPresignedUrlExpirySeconds());
+
+            Map<String, String> queryParams = contentDispositionParams(filename, attachment);
+            if (!queryParams.isEmpty()) {
+                builder.extraQueryParams(queryParams);
+            }
+
+            return minioClient.getPresignedObjectUrl(builder.build());
         } catch (Exception e) {
             throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PRESIGN_FAILED",
                     "Failed to generate download URL: " + e.getMessage());
         }
+    }
+
+    private Map<String, String> contentDispositionParams(String filename, boolean attachment) {
+        if (filename == null || filename.isBlank()) {
+            return Map.of();
+        }
+        String trimmed = filename.trim();
+        String asciiFallback = trimmed.replaceAll("[^\\x20-\\x7E]", "_");
+        if (asciiFallback.isBlank()) {
+            asciiFallback = "download";
+        }
+        String encoded = URLEncoder.encode(trimmed, StandardCharsets.UTF_8).replace("+", "%20");
+        String disposition = (attachment ? "attachment" : "inline")
+                + "; filename=\"" + asciiFallback + "\""
+                + "; filename*=UTF-8''" + encoded;
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("response-content-disposition", disposition);
+        return params;
     }
 
     @Override

@@ -12,6 +12,8 @@ public interface StorageService {
 
     String generatePresignedDownloadUrl(String objectKey);
 
+    String generatePresignedDownloadUrl(String objectKey, String filename, boolean attachment);
+
     void deleteObject(String objectKey);
 
     byte[] download(String objectKey);

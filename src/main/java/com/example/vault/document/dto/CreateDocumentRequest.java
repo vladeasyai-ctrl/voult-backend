@@ -10,6 +10,7 @@ public record CreateDocumentRequest(
         UUID parentId,
         @NotBlank @Size(max = 500) String title,
         @Size(max = 5000) String description,
-        @NotNull UUID assetId
+        @NotNull UUID assetId,
+        Boolean enrichWithAi
 ) {
 }

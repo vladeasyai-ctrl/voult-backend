@@ -15,10 +15,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
 
@@ -33,8 +35,18 @@ public class ImportController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Upload a file for AI-assisted import")
-    public ImportSessionDto create(@RequestPart("file") MultipartFile file) {
-        return importSessionService.create(file);
+    public ImportSessionDto create(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) UUID spaceId,
+            @RequestParam(required = false) UUID parentId
+    ) {
+        return importSessionService.create(file, spaceId, parentId);
+    }
+
+    @GetMapping(value = "/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Subscribe to import progress events")
+    public SseEmitter events(@PathVariable UUID id) {
+        return importSessionService.subscribeEvents(id);
     }
 
     @GetMapping("/{id}")
@@ -43,14 +55,8 @@ public class ImportController {
         return importSessionService.get(id);
     }
 
-    @PostMapping("/{id}/analyze")
-    @Operation(summary = "Analyze uploaded file with AI and build a placement proposal")
-    public ImportSessionDto analyze(@PathVariable UUID id) {
-        return importSessionService.startAnalysis(id);
-    }
-
     @PostMapping("/{id}/confirm")
-    @Operation(summary = "Confirm AI proposal and create document in the vault tree")
+    @Operation(summary = "Apply edits to auto-created document")
     public DocumentDto confirm(
             @PathVariable UUID id,
             @Valid @RequestBody ConfirmImportRequest request
@@ -60,7 +66,7 @@ public class ImportController {
 
     @PostMapping("/{id}/discard")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Discard staged import and remove uploaded file")
+    @Operation(summary = "Reject import and remove auto-created document")
     public void discard(@PathVariable UUID id) {
         importSessionService.discard(id);
     }

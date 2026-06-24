@@ -3,7 +3,6 @@ package com.example.vault.node.controller;
 import com.example.vault.node.dto.CreateNodeRequest;
 import com.example.vault.node.dto.MoveNodeRequest;
 import com.example.vault.node.dto.NodeDto;
-import com.example.vault.node.dto.TreeNodeDto;
 import com.example.vault.node.dto.UpdateNodeRequest;
 import com.example.vault.node.service.NodeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,7 +11,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,32 +20,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/nodes")
 @RequiredArgsConstructor
-@Tag(name = "Nodes", description = "Tree structure management")
+@Tag(name = "Nodes", description = "Tree structure management within a space")
 public class NodeController {
 
     private final NodeService nodeService;
 
-    @GetMapping("/tree")
-    @Operation(summary = "Get full node tree")
-    public List<TreeNodeDto> getTree() {
-        return nodeService.getTree();
-    }
-
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Create a folder node")
+    @Operation(summary = "Create a folder node within a space")
     public NodeDto create(@Valid @RequestBody CreateNodeRequest request) {
         return nodeService.create(request);
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update node name")
+    @Operation(summary = "Update node fields")
     public NodeDto update(@PathVariable UUID id, @Valid @RequestBody UpdateNodeRequest request) {
         return nodeService.update(id, request);
     }
