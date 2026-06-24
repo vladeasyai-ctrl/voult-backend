@@ -69,6 +69,17 @@ public class StubDocumentAiAnalyzer implements DocumentAiAnalyzer {
     }
 
     @Override
+    public ImportProposalDto analyze(
+            byte[] content,
+            String mimeType,
+            String originalFilename,
+            List<TreeNodeDto> tree,
+            UUID userId
+    ) {
+        return analyze(content, mimeType, originalFilename, tree);
+    }
+
+    @Override
     public boolean isEnabled() {
         return true;
     }
@@ -90,6 +101,15 @@ public class StubDocumentAiAnalyzer implements DocumentAiAnalyzer {
         }
         if (mimeType != null && mimeType.contains("pdf")) {
             tags.add("pdf");
+        }
+        if (mimeType != null && (mimeType.contains("word") || mimeType.contains("wordprocessing"))) {
+            tags.add("word");
+        }
+        if (mimeType != null && (mimeType.contains("excel") || mimeType.contains("spreadsheet") || mimeType.contains("csv"))) {
+            tags.add("spreadsheet");
+        }
+        if (mimeType != null && mimeType.startsWith("text/")) {
+            tags.add("text");
         }
         if (tags.isEmpty()) {
             tags.add("document");

@@ -1,8 +1,14 @@
 package com.example.vault.space.service;
 
+import com.example.vault.assistant.service.VaultTreeMutationService;
+import com.example.vault.document.repository.DocumentRepository;
+import com.example.vault.document.service.DocumentService;
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
 import com.example.vault.node.dto.TreeNodeDto;
+import com.example.vault.node.entity.Node;
+import com.example.vault.node.entity.NodeType;
+import com.example.vault.node.repository.NodeRepository;
 import com.example.vault.node.service.NodeService;
 import com.example.vault.space.dto.CreateSpaceRequest;
 import com.example.vault.space.dto.SpaceDto;
@@ -25,6 +31,10 @@ public class SpaceService {
     private final SpaceRepository spaceRepository;
     private final SpaceMapper spaceMapper;
     private final NodeService nodeService;
+    private final NodeRepository nodeRepository;
+    private final DocumentRepository documentRepository;
+    private final DocumentService documentService;
+    private final VaultTreeMutationService treeMutationService;
 
     @Transactional(readOnly = true)
     public List<SpaceDto> list() {
@@ -82,9 +92,17 @@ public class SpaceService {
 
     @Transactional
     public void delete(UUID id) {
-        if (!spaceRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Space", id);
+        findSpaceOrThrow(id);
+
+        for (Node root : nodeRepository.findAllBySpaceIdAndParentIdIsNullOrderByNameAsc(id)) {
+            if (root.getType() == NodeType.FOLDER) {
+                treeMutationService.deleteFolderRecursive(root.getId());
+            } else {
+                documentRepository.findByNodeId(root.getId())
+                        .ifPresent(doc -> documentService.delete(doc.getId()));
+            }
         }
+
         spaceRepository.deleteById(id);
     }
 

@@ -38,7 +38,7 @@ public class NodeController {
     }
 
     @PutMapping("/{id}")
-    @Operation(summary = "Update node name")
+    @Operation(summary = "Update node fields")
     public NodeDto update(@PathVariable UUID id, @Valid @RequestBody UpdateNodeRequest request) {
         return nodeService.update(id, request);
     }

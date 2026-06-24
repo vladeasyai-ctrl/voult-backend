@@ -1,9 +1,11 @@
 package com.example.vault.importing.service;
 
 import com.example.vault.ai.DocumentAiAnalyzer;
+import com.example.vault.assistant.service.CurrentUserService;
 import com.example.vault.asset.service.AssetService;
 import com.example.vault.document.dto.DocumentDto;
 import com.example.vault.document.service.DocumentService;
+import com.example.vault.common.transaction.AfterCommitExecutor;
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
 import com.example.vault.importing.dto.ConfirmImportRequest;
@@ -55,6 +57,8 @@ public class ImportSessionService {
     private final ImportEventBroadcaster eventBroadcaster;
     private final ImportFolderCleanupService folderCleanupService;
     private final NodeService nodeService;
+    private final AfterCommitExecutor afterCommitExecutor;
+    private final CurrentUserService currentUserService;
 
     @Transactional
     public ImportSessionDto create(MultipartFile file, UUID spaceId, UUID parentId) {
@@ -81,7 +85,10 @@ public class ImportSessionService {
                 .build();
 
         ImportSession saved = importSessionRepository.save(session);
-        processingWorker.processAsync(saved.getId(), content, filename, mimeType);
+        UUID importId = saved.getId();
+        UUID userId = currentUserService.findCurrentUserId().orElse(null);
+        afterCommitExecutor.run(() ->
+                processingWorker.processAsync(importId, content, filename, mimeType, userId));
         return importSessionMapper.toDto(saved);
     }
 
@@ -142,7 +149,7 @@ public class ImportSessionService {
         session.setProposal(proposal);
         session.setErrorMessage(null);
 
-        ResolveImportResult resolved = nodeService.resolveImportParentWithTracking(
+        ResolveImportResult resolved = nodeService.resolveImportParentForProposal(
                 session.getSpaceId(),
                 session.getParentId(),
                 proposal.folderPath(),

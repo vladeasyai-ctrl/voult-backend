@@ -2,6 +2,7 @@ package com.example.vault.node.service;
 
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
+import com.example.vault.node.FolderAppearanceKeys;
 import com.example.vault.node.dto.CreateNodeRequest;
 import com.example.vault.node.dto.MoveNodeRequest;
 import com.example.vault.node.dto.NodeDto;
@@ -62,6 +63,9 @@ public class NodeService {
                 .parentId(request.parentId())
                 .name(request.name())
                 .type(request.type())
+                .iconKey(FolderAppearanceKeys.resolveIconKey(request.iconKey()))
+                .color(FolderAppearanceKeys.resolveColor(request.color()))
+                .description(normalizeDescription(request.description()))
                 .build();
 
         return nodeMapper.toDto(nodeRepository.save(node));
@@ -70,7 +74,26 @@ public class NodeService {
     @Transactional
     public NodeDto update(UUID id, UpdateNodeRequest request) {
         Node node = findNodeOrThrow(id);
-        node.setName(request.name());
+        if (request.name() != null) {
+            if (request.name().isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NAME", "Name cannot be blank");
+            }
+            node.setName(request.name().trim());
+        }
+        if (node.getType() == NodeType.FOLDER) {
+            if (request.iconKey() != null) {
+                node.setIconKey(FolderAppearanceKeys.resolveIconKey(request.iconKey()));
+            }
+            if (request.color() != null) {
+                node.setColor(FolderAppearanceKeys.resolveColor(request.color()));
+            }
+            if (request.description() != null) {
+                node.setDescription(normalizeDescription(request.description()));
+            }
+        } else if (request.iconKey() != null || request.color() != null || request.description() != null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NODE_TYPE",
+                    "Only folders support appearance fields");
+        }
         return nodeMapper.toDto(nodeRepository.save(node));
     }
 
@@ -222,6 +245,8 @@ public class NodeService {
                     .parentId(currentParent)
                     .name(segment)
                     .type(NodeType.FOLDER)
+                    .iconKey(FolderAppearanceKeys.DEFAULT_ICON)
+                    .color(FolderAppearanceKeys.DEFAULT_COLOR)
                     .build();
             Node saved = nodeRepository.save(folder);
             if (createdFolderIds != null) {
@@ -242,6 +267,46 @@ public class NodeService {
         List<UUID> createdFolderIds = new ArrayList<>();
         UUID parentId = resolveImportParentInternal(spaceId, anchorParentId, folderPath, createMissing, createdFolderIds);
         return new ResolveImportResult(parentId, List.copyOf(createdFolderIds));
+    }
+
+    @Transactional
+    public ResolveImportResult resolveImportParentForProposal(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath,
+            boolean createMissingFolders
+    ) {
+        boolean createMissing = createMissingFolders
+                || !canResolveImportParentNoThrow(spaceId, anchorParentId, folderPath);
+        List<UUID> createdFolderIds = new ArrayList<>();
+        UUID parentId = resolveImportParentInternal(
+                spaceId, anchorParentId, folderPath, createMissing, createdFolderIds);
+        return new ResolveImportResult(parentId, List.copyOf(createdFolderIds));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canResolveImportParent(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath
+    ) {
+        return canResolveImportParentNoThrow(spaceId, anchorParentId, folderPath);
+    }
+
+    private boolean canResolveImportParentNoThrow(
+            UUID spaceId,
+            UUID anchorParentId,
+            List<String> folderPath
+    ) {
+        try {
+            resolveImportParentInternal(spaceId, anchorParentId, folderPath, false, null);
+            return true;
+        } catch (ApiException e) {
+            if ("FOLDER_NOT_FOUND".equals(e.getCode())) {
+                return false;
+            }
+            throw e;
+        }
     }
 
     @Transactional
@@ -294,7 +359,33 @@ public class NodeService {
             return resolveOrCreateFolderPath(resolvedSpaceId, null, segments, createMissing, createdFolderIds);
         }
 
+        Optional<UUID> existingPath = findExistingFolderPathFromRoot(resolvedSpaceId, segments);
+        if (existingPath.isPresent()) {
+            return existingPath.get();
+        }
+
         return resolveOrCreateFolderPath(resolvedSpaceId, anchorParentId, segments, createMissing, createdFolderIds);
+    }
+
+    private Optional<UUID> findExistingFolderPathFromRoot(UUID spaceId, List<String> segments) {
+        if (segments.isEmpty()) {
+            return Optional.empty();
+        }
+        UUID currentParent = null;
+        for (String rawSegment : segments) {
+            if (rawSegment == null || rawSegment.isBlank()) {
+                continue;
+            }
+            String segment = rawSegment.trim();
+            Optional<Node> existing = nodeRepository.findFolderBySpaceParentAndName(
+                    spaceId, currentParent, segment, NodeType.FOLDER
+            );
+            if (existing.isEmpty()) {
+                return Optional.empty();
+            }
+            currentParent = existing.get().getId();
+        }
+        return Optional.ofNullable(currentParent);
     }
 
     private List<String> getPathFromRoot(UUID nodeId) {
@@ -352,5 +443,13 @@ public class NodeService {
         if (!spaceRepository.existsById(spaceId)) {
             throw new ResourceNotFoundException("Space", spaceId);
         }
+    }
+
+    private String normalizeDescription(String description) {
+        if (description == null) {
+            return null;
+        }
+        String trimmed = description.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

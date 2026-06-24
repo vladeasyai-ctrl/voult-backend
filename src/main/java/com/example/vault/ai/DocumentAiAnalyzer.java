@@ -17,5 +17,15 @@ public interface DocumentAiAnalyzer {
             List<TreeNodeDto> tree
     );
 
+    default ImportProposalDto analyze(
+            byte[] content,
+            String mimeType,
+            String originalFilename,
+            List<TreeNodeDto> tree,
+            UUID userId
+    ) {
+        return analyze(content, mimeType, originalFilename, tree);
+    }
+
     boolean isEnabled();
 }

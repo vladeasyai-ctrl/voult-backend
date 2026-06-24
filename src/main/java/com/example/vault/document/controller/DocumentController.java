@@ -38,8 +38,11 @@ public class DocumentController {
 
     @GetMapping("/search")
     @Operation(summary = "Search documents by title, summary and full text index")
-    public List<DocumentDto> search(@RequestParam(required = false) String q) {
-        return documentService.search(q);
+    public List<DocumentDto> search(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) UUID spaceId
+    ) {
+        return documentService.search(spaceId, q);
     }
 
     @GetMapping("/by-node/{nodeId}")

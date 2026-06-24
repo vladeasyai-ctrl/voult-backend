@@ -88,7 +88,8 @@ public class VaultActionExecutor {
         }
 
         var created = nodeService.create(
-                new CreateNodeRequest(spaceId, parentId, action.name().trim(), NodeType.FOLDER));
+                new CreateNodeRequest(
+                        spaceId, parentId, action.name().trim(), NodeType.FOLDER, null, null, null));
         return "Создана папка «" + created.name() + "»" + (parentId == null ? " (ветка)" : "");
     }
 
@@ -123,7 +124,8 @@ public class VaultActionExecutor {
         if (action.newName() == null || action.newName().isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_NAME", "New name is required");
         }
-        var updated = nodeService.update(nodeId, new UpdateNodeRequest(action.newName().trim()));
+        var updated = nodeService.update(
+                nodeId, new UpdateNodeRequest(action.newName().trim(), null, null, null));
         return "Переименован узел в «" + updated.name() + "»";
     }
 

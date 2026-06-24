@@ -1,13 +1,13 @@
 package com.example.vault.asset.service;
 
+import com.example.vault.ai.DocumentTextExtractor;
 import com.example.vault.asset.dto.AssetDto;
 import com.example.vault.asset.dto.DownloadUrlResponse;
+import com.example.vault.asset.dto.TextPreviewResponse;
 import com.example.vault.asset.entity.Asset;
 import com.example.vault.asset.mapper.AssetMapper;
 import com.example.vault.asset.repository.AssetRepository;
 import com.example.vault.config.StorageProperties;
-import com.example.vault.asset.entity.Asset;
-import com.example.vault.asset.repository.AssetRepository;
 import com.example.vault.document.repository.DocumentRepository;
 import com.example.vault.exception.ApiException;
 import com.example.vault.exception.ResourceNotFoundException;
@@ -33,6 +33,7 @@ public class AssetService {
     private final StorageService storageService;
     private final StorageProperties storageProperties;
     private final DocumentRepository documentRepository;
+    private final DocumentTextExtractor documentTextExtractor;
 
     @Transactional
     public AssetDto upload(MultipartFile file) {
@@ -83,12 +84,61 @@ public class AssetService {
     }
 
     @Transactional(readOnly = true)
-    public DownloadUrlResponse getDownloadUrl(UUID id) {
+    public DownloadUrlResponse getDownloadUrl(UUID id, String filename) {
         Asset asset = assetRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Asset", id));
 
-        String url = storageService.generatePresignedDownloadUrl(asset.getStorageKey());
-        return new DownloadUrlResponse(url, storageProperties.getPresignedUrlExpirySeconds());
+        String resolvedFilename = resolveDownloadFilename(filename, asset.getStorageKey());
+        int expiry = storageProperties.getPresignedUrlExpirySeconds();
+        String previewUrl = storageService.generatePresignedDownloadUrl(
+                asset.getStorageKey(), resolvedFilename, false);
+        String attachmentUrl = storageService.generatePresignedDownloadUrl(
+                asset.getStorageKey(), resolvedFilename, true);
+        return new DownloadUrlResponse(previewUrl, attachmentUrl, expiry);
+    }
+
+    @Transactional(readOnly = true)
+    public TextPreviewResponse getTextPreview(UUID id) {
+        Asset asset = assetRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Asset", id));
+
+        String filename = resolvePreviewFilename(asset);
+        if (!documentTextExtractor.canExtract(asset.getMimeType(), filename)) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TEXT_PREVIEW_UNSUPPORTED",
+                    "Text preview is not available for this file type");
+        }
+
+        try {
+            byte[] content = storageService.download(asset.getStorageKey());
+            String extracted = documentTextExtractor.extract(content, asset.getMimeType(), filename);
+            if (extracted == null || extracted.isBlank()) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TEXT_PREVIEW_EMPTY",
+                        "No readable text found in this file");
+            }
+
+            int totalLength = extracted.length();
+            int previewLimit = 4_000;
+            boolean truncated = totalLength > previewLimit;
+            String preview = truncated ? extracted.substring(0, previewLimit) : extracted;
+            return new TextPreviewResponse(preview, totalLength, truncated);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TEXT_PREVIEW_FAILED",
+                    "Failed to read document text: " + e.getMessage());
+        }
+    }
+
+    private String resolvePreviewFilename(Asset asset) {
+        return documentRepository.findByAssetId(asset.getId())
+                .map(document -> {
+                    String title = document.getTitle();
+                    if (title != null && title.contains(".")) {
+                        return title;
+                    }
+                    return resolveDownloadFilename(title, asset.getStorageKey());
+                })
+                .orElseGet(() -> resolveDownloadFilename(null, asset.getStorageKey()));
     }
 
     @Transactional
@@ -107,6 +157,14 @@ public class AssetService {
     private String buildStorageKey(UUID assetId, String originalFilename) {
         String safeName = originalFilename != null ? originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_") : "file";
         return "assets/" + assetId + "/" + safeName;
+    }
+
+    private String resolveDownloadFilename(String requestedFilename, String storageKey) {
+        if (requestedFilename != null && !requestedFilename.isBlank()) {
+            return requestedFilename.trim();
+        }
+        int slash = storageKey.lastIndexOf('/');
+        return slash >= 0 ? storageKey.substring(slash + 1) : storageKey;
     }
 
     private byte[] readContent(MultipartFile file) {

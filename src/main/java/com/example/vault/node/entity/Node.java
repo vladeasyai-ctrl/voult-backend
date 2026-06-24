@@ -39,4 +39,13 @@ public class Node extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private NodeType type;
+
+    @Column(name = "icon_key")
+    private String iconKey;
+
+    @Column(name = "color")
+    private String color;
+
+    @Column(name = "description")
+    private String description;
 }
